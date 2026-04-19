@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     environment:
       POSTGRES_DB: keycloak
       POSTGRES_USER: keycloak
@@ -16,7 +16,7 @@ services:
       - ztnet
 
   keycloak:
-    image: quay.io/keycloak/keycloak:24.0
+    image: quay.io/keycloak/keycloak
     command: start --import-realm --health-enabled=true
     environment:
       KC_DB: postgres
@@ -80,6 +80,9 @@ services:
       CLIENT_ID: python-client
       CLIENT_SECRET: change-me-in-realm-export
       CA_CERT: /certs/ca.crt
+      # mTLS: client cert + key presented to the Go API
+      CLIENT_CERT: /certs/client.crt
+      CLIENT_KEY: /certs/client.key
     volumes:
       - ./certs:/certs:ro
     depends_on:

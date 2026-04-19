@@ -9,9 +9,8 @@ if ! command -v openssl >/dev/null 2>&1; then
   exit 1
 fi
 
-# Preflight: if any target paths exist as DIRECTORIES (likely created by a
-# previous failed docker bind-mount), remove them so we can write files.
-for f in ca.crt ca.key keycloak.crt keycloak.key api.crt api.key; do
+# Preflight: remove stray directories from prior bad bind-mounts
+for f in ca.crt ca.key keycloak.crt keycloak.key api.crt api.key client.crt client.key; do
   if [ -d "$f" ]; then
     echo "Removing stray directory at $f (left over from bad bind-mount)..."
     rmdir "$f" 2>/dev/null || rm -rf "$f"
@@ -23,10 +22,14 @@ openssl genrsa -out ca.key 4096
 openssl req -x509 -new -nodes -key ca.key -sha256 -days 365 \
   -out ca.crt -subj "/CN=ZeroTrustLocalCA"
 
-echo "==> Generating Keycloak cert..."
+# -------------------------------------------------------------------
+# SERVER CERT: Keycloak
+# -------------------------------------------------------------------
+echo "==> Generating Keycloak server cert..."
 cat > keycloak.ext <<EOF
 authorityKeyIdentifier=keyid,issuer
 basicConstraints=CA:FALSE
+extendedKeyUsage=serverAuth
 subjectAltName = @alt_names
 [alt_names]
 DNS.1 = keycloak
@@ -35,15 +38,18 @@ IP.1  = 127.0.0.1
 EOF
 
 openssl genrsa -out keycloak.key 2048
-openssl req -new -key keycloak.key -out keycloak.csr \
-  -subj "/CN=keycloak"
+openssl req -new -key keycloak.key -out keycloak.csr -subj "/CN=keycloak"
 openssl x509 -req -in keycloak.csr -CA ca.crt -CAkey ca.key \
   -CAcreateserial -out keycloak.crt -days 365 -sha256 -extfile keycloak.ext
 
-echo "==> Generating API cert..."
+# -------------------------------------------------------------------
+# SERVER CERT: Go API
+# -------------------------------------------------------------------
+echo "==> Generating Go API server cert..."
 cat > api.ext <<EOF
 authorityKeyIdentifier=keyid,issuer
 basicConstraints=CA:FALSE
+extendedKeyUsage=serverAuth
 subjectAltName = @alt_names
 [alt_names]
 DNS.1 = api
@@ -55,6 +61,30 @@ openssl req -new -key api.key -out api.csr -subj "/CN=api"
 openssl x509 -req -in api.csr -CA ca.crt -CAkey ca.key \
   -CAcreateserial -out api.crt -days 365 -sha256 -extfile api.ext
 
+# -------------------------------------------------------------------
+# CLIENT CERT: Python client (for mTLS against the Go API)
+# -------------------------------------------------------------------
+# Note: extendedKeyUsage=clientAuth is what distinguishes this from a
+# server cert. Strict TLS validators refuse to treat a server cert as a
+# client cert, and vice versa.
+#
+# The CN here matters: the Go API cross-checks it against the JWT's
+# `azp` claim (authorized party). They must agree.
+echo "==> Generating client cert for python-client (mTLS)..."
+cat > client.ext <<EOF
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+extendedKeyUsage=clientAuth
+subjectAltName = @alt_names
+[alt_names]
+DNS.1 = python-client
+EOF
+
+openssl genrsa -out client.key 2048
+openssl req -new -key client.key -out client.csr -subj "/CN=python-client"
+openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key \
+  -CAcreateserial -out client.crt -days 365 -sha256 -extfile client.ext
+
 chmod 644 *.crt
 chmod 640 *.key
 
@@ -63,7 +93,7 @@ rm -f ./*.csr ./*.ext ./*.srl
 
 echo
 echo "==> Verification (all must be 'regular file'):"
-for f in ca.crt keycloak.crt keycloak.key api.crt api.key; do
+for f in ca.crt keycloak.crt keycloak.key api.crt api.key client.crt client.key; do
   if [ -f "$f" ]; then
     printf "  %-20s %s\n" "$f" "$(file -b "$f" 2>/dev/null || echo OK)"
   else
@@ -72,5 +102,11 @@ for f in ca.crt keycloak.crt keycloak.key api.crt api.key; do
   fi
 done
 
+echo
+echo "==> Certificate roles:"
+echo "  ca.crt         → root of trust, distributed to all containers"
+echo "  keycloak.crt   → SERVER cert for Keycloak (clients verify this)"
+echo "  api.crt        → SERVER cert for Go API (clients verify this)"
+echo "  client.crt     → CLIENT cert for Python (API verifies this, mTLS)"
 echo
 echo "Done. Now run: docker compose up --build"
