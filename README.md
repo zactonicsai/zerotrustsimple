@@ -82,3 +82,4 @@ docker compose up --build
 
 The generate script now also auto-cleans these on its own if it detects them.
 # zerotrustsimple
+# zerotrustsimple
