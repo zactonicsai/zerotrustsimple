@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Zero Trust Architecture — A Line-by-Line Tutorial</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800;9..144,900&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          mono: ['JetBrains Mono', 'monospace'],
+          display: ['Fraunces', 'serif'],
+        },
+        colors: {
+          ink: '#0a0a0a',
+          paper: '#f5f1e8',
+          bone: '#e8e2d0',
+          rust: '#c14a1a',
+          oxide: '#8b3a0f',
+          moss: '#3a5a3a',
+          sky: '#2d5f7a',
+          amber: '#d4a017',
+        }
+      }
+    }
+  }
+</script>
+<style>
+  body {
+    background: #f5f1e8;
+    color: #0a0a0a;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  /* Grainy paper texture */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0.35;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  }
+  .display { font-family: 'Fraunces', serif; font-feature-settings: 'ss01'; }
+
+  /* Brutalist hard shadow */
+  .shadow-hard { box-shadow: 6px 6px 0 0 #0a0a0a; }
+  .shadow-hard-sm { box-shadow: 3px 3px 0 0 #0a0a0a; }
+  .shadow-hard-rust { box-shadow: 6px 6px 0 0 #c14a1a; }
+
+  /* Monospace code block */
+  pre.code-block {
+    background: #0a0a0a;
+    color: #e8e2d0;
+    border: 2px solid #0a0a0a;
+    padding: 1.25rem 1.5rem;
+    overflow-x: auto;
+    font-size: 0.82rem;
+    line-height: 1.7;
+    tab-size: 2;
+    position: relative;
+  }
+  pre.code-block code { font-family: 'JetBrains Mono', monospace; }
+
+  /* Syntax highlighting */
+  .tok-k { color: #d4a017; font-weight: 600; } /* keyword */
+  .tok-s { color: #9cc49c; } /* string */
+  .tok-c { color: #6b6b6b; font-style: italic; } /* comment */
+  .tok-n { color: #e8e2d0; } /* normal */
+  .tok-t { color: #7ab8d4; } /* type */
+  .tok-f { color: #e0a080; } /* function */
+  .tok-num { color: #d4a017; }
+  .tok-p { color: #c14a1a; font-weight: 600; } /* punctuation-highlight */
+
+  /* Line number gutter */
+  .code-block .ln {
+    display: inline-block;
+    width: 2.5ch;
+    color: #4a4a4a;
+    user-select: none;
+    margin-right: 1.25rem;
+    text-align: right;
+  }
+  .code-block .line { display: block; }
+  .code-block .line:hover { background: rgba(212, 160, 23, 0.08); }
+  .code-block .line.highlight-line {
+    background: rgba(212, 160, 23, 0.12);
+    border-left: 3px solid #d4a017;
+    margin-left: -1.5rem;
+    padding-left: calc(1.5rem - 3px);
+  }
+
+  /* Clickable term */
+  .term {
+    border-bottom: 2px dashed #c14a1a;
+    cursor: help;
+    font-weight: 600;
+    color: #c14a1a;
+    transition: background 0.15s;
+  }
+  .term:hover { background: rgba(193, 74, 26, 0.1); }
+
+  /* Line annotation */
+  .annot-line {
+    background: #ffffff;
+    border-left: 4px solid #0a0a0a;
+    padding: 0.75rem 1rem;
+    margin: 0.5rem 0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+  .annot-line .linenum {
+    display: inline-block;
+    background: #0a0a0a;
+    color: #d4a017;
+    padding: 1px 8px;
+    font-weight: 700;
+    font-size: 0.72rem;
+    margin-right: 0.6rem;
+    letter-spacing: 0.05em;
+  }
+
+  /* Section marker */
+  .section-num {
+    font-family: 'Fraunces', serif;
+    font-weight: 900;
+    font-size: clamp(3rem, 12vw, 8rem);
+    line-height: 0.9;
+    color: #c14a1a;
+    opacity: 0.85;
+  }
+
+  /* Modal animation */
+  .modal-backdrop {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease-out;
+  }
+  .modal-backdrop.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .modal-content {
+    transform: translateY(20px) scale(0.96);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .modal-backdrop.open .modal-content {
+    transform: translateY(0) scale(1);
+  }
+
+  /* TOC sticky sidebar links */
+  .toc-link {
+    display: block;
+    padding: 0.5rem 0.75rem;
+    border-left: 2px solid transparent;
+    font-size: 0.78rem;
+    color: #4a4a4a;
+    transition: all 0.15s;
+  }
+  .toc-link:hover { color: #c14a1a; border-left-color: #c14a1a; }
+  .toc-link.active {
+    color: #0a0a0a;
+    border-left-color: #0a0a0a;
+    background: #e8e2d0;
+    font-weight: 600;
+  }
+
+  /* Callout boxes */
+  .callout {
+    border: 2px solid #0a0a0a;
+    background: #ffffff;
+    padding: 1rem 1.25rem;
+    position: relative;
+  }
+  .callout.warn { background: #fef3d0; }
+  .callout.info { background: #e0ecf3; }
+  .callout.danger { background: #f3d8ce; }
+  .callout-label {
+    position: absolute;
+    top: -12px; left: 16px;
+    background: #0a0a0a;
+    color: #d4a017;
+    padding: 2px 10px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+  }
+
+  /* Animated request flow */
+  @keyframes dash-flow {
+    to { stroke-dashoffset: -20; }
+  }
+  .flow-line {
+    stroke-dasharray: 6 4;
+    animation: dash-flow 1.2s linear infinite;
+  }
+
+  /* Step pill */
+  .step-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #0a0a0a;
+    color: #d4a017;
+    padding: 4px 12px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+  }
+
+  /* Scroll reveal */
+  .reveal { opacity: 0; transform: translateY(20px); transition: all 0.5s ease-out; }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+
+  /* Strike-through header accent */
+  .h-accent {
+    position: relative;
+    display: inline-block;
+  }
+  .h-accent::after {
+    content: '';
+    position: absolute;
+    left: -4px; right: -4px;
+    bottom: 4px;
+    height: 12px;
+    background: #d4a017;
+    z-index: -1;
+    opacity: 0.5;
+  }
+
+  details summary { cursor: pointer; list-style: none; }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::before { content: '▸ '; color: #c14a1a; font-weight: bold; }
+  details[open] summary::before { content: '▾ '; }
+</style>
+</head>
+<body class="relative">
+
+<!-- HEADER / HERO -->
+<header class="relative z-10 border-b-4 border-ink">
+  <div class="max-w-7xl mx-auto px-6 md:px-10 py-6 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 bg-ink flex items-center justify-center">
+        <div class="w-3 h-3 bg-amber"></div>
+      </div>
+      <span class="text-xs tracking-[0.2em] font-bold">ZT//TUTORIAL.v1</span>
+    </div>
+    <div class="text-xs tracking-widest hidden md:block">SESSION_001 &middot; 2026 &middot; HANDS-ON</div>
+  </div>
+  <div class="max-w-7xl mx-auto px-6 md:px-10 pt-8 pb-20 grid md:grid-cols-12 gap-8">
+    <div class="md:col-span-8">
+      <div class="text-xs tracking-[0.3em] mb-6 text-rust font-bold">NEVER TRUST &middot; ALWAYS VERIFY</div>
+      <h1 class="display font-black leading-[0.88] tracking-tight" style="font-size: clamp(2.5rem, 7vw, 5.5rem);">
+        Zero Trust,<br/>
+        <span class="h-accent">dissected.</span>
+      </h1>
+      <p class="mt-8 text-base md:text-lg max-w-2xl leading-relaxed">
+        A working Docker Compose stack — Keycloak, a Go API, a Python client — picked apart <em>line by line</em>.
+        By the end, you will understand not just <em>what</em> the code does, but <em>why</em>
+        every single request has to prove itself, even from inside your own network.
+      </p>
+      <div class="mt-10 flex flex-wrap gap-3">
+        <a href="#overview" class="bg-ink text-paper px-5 py-3 text-xs font-bold tracking-[0.15em] shadow-hard hover:translate-x-[-2px] hover:translate-y-[-2px] transition-transform">→ START HERE</a>
+        <a href="#architecture" class="bg-paper border-2 border-ink px-5 py-3 text-xs font-bold tracking-[0.15em] hover:bg-bone transition-colors">VIEW DIAGRAM</a>
+      </div>
+    </div>
+    <div class="md:col-span-4 flex flex-col gap-3 text-xs">
+      <div class="border-2 border-ink bg-paper p-4">
+        <div class="text-[10px] tracking-widest text-rust font-bold mb-2">PREREQUISITES</div>
+        <ul class="space-y-1 leading-relaxed">
+          <li>&rarr; Docker + Compose</li>
+          <li>&rarr; OpenSSL</li>
+          <li>&rarr; Terminal comfort</li>
+          <li>&rarr; ~4GB free RAM</li>
+        </ul>
+      </div>
+      <div class="border-2 border-ink bg-ink text-paper p-4">
+        <div class="text-[10px] tracking-widest text-amber font-bold mb-2">TIME BUDGET</div>
+        <div class="display text-3xl font-black">~90 min</div>
+        <div class="text-[10px] mt-1 opacity-60">including runtime</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- LAYOUT: TOC SIDEBAR + MAIN -->
+<div class="relative z-10 max-w-7xl mx-auto px-6 md:px-10 py-16 grid lg:grid-cols-12 gap-10">
+
+  <!-- STICKY TOC -->
+  <aside class="lg:col-span-3 lg:sticky lg:top-6 lg:self-start hidden lg:block">
+    <div class="border-2 border-ink bg-paper">
+      <div class="bg-ink text-paper px-4 py-2 text-[10px] tracking-[0.2em] font-bold">CONTENTS</div>
+      <nav id="toc" class="p-2">
+        <a class="toc-link" href="#overview">00 · Overview</a>
+        <a class="toc-link" href="#concepts">01 · Core Concepts</a>
+        <a class="toc-link" href="#architecture">02 · Architecture</a>
+        <a class="toc-link" href="#structure">03 · Project Structure</a>
+        <a class="toc-link" href="#certs">04 · TLS Certificates</a>
+        <a class="toc-link" href="#compose">05 · Docker Compose</a>
+        <a class="toc-link" href="#realm">06 · Keycloak Realm</a>
+        <a class="toc-link" href="#api">07 · The Go API</a>
+        <a class="toc-link" href="#dockerfile-api">08 · API Dockerfile</a>
+        <a class="toc-link" href="#client">09 · The Python Client</a>
+        <a class="toc-link" href="#run">10 · Run & Observe</a>
+        <a class="toc-link" href="#test">11 · Testing</a>
+        <a class="toc-link" href="#glossary">12 · Glossary</a>
+      </nav>
+    </div>
+    <div class="mt-4 border-2 border-ink bg-amber/20 p-3 text-[10px] leading-relaxed">
+      <strong class="text-rust">TIP:</strong> Dashed red terms are clickable — tap for deep dives.
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="lg:col-span-9 space-y-24">
+
+    <!-- ========== 00 OVERVIEW ========== -->
+    <section id="overview" class="reveal">
+      <div class="flex items-baseline gap-6 mb-8">
+        <div class="section-num">00</div>
+        <div>
+          <div class="text-[10px] tracking-[0.3em] text-rust font-bold">OVERVIEW</div>
+          <h2 class="display text-4xl md:text-5xl font-black leading-none">The Shift in Thinking</h2>
+        </div>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-6">
+        <div class="border-2 border-ink bg-bone p-6">
+          <div class="text-xs tracking-[0.2em] font-bold text-oxide mb-3">OLD MODEL</div>
+          <div class="display text-2xl font-black mb-3">Castle & Moat</div>
+          <p class="text-sm leading-relaxed">Build a hard shell (firewall), then <em>trust everything inside</em>. Once past the gate, you're family. Single breach &rarr; total compromise.</p>
+        </div>
+        <div class="border-2 border-ink bg-ink text-paper p-6 shadow-hard-rust">
+          <div class="text-xs tracking-[0.2em] font-bold text-amber mb-3">NEW MODEL</div>
+          <div class="display text-2xl font-black mb-3">Zero Trust</div>
+          <p class="text-sm leading-relaxed">Trust <em>no one</em>. Every request &mdash; even from the next container over &mdash; must present cryptographic proof. The network stops being a security boundary.</p>
+        </div>
+      </div>
+
+      <div class="mt-10 callout info">
+        <span class="callout-label">THE GOAL</span>
+        <p class="mt-2 text-sm leading-relaxed">By the end of this lesson you'll have a local stack where <strong>a Python script calls a Go API</strong>, but the Go API refuses to answer unless the request carries a freshly-signed, audience-scoped, TLS-delivered JWT from <strong>Keycloak</strong>. Remove any of those pieces and you get <code class="bg-ink text-amber px-1.5">401</code>.</p>
+      </div>
+
+      <div class="mt-8">
+        <h3 class="display text-2xl font-black mb-4">What You'll Build (High Level)</h3>
+        <ol class="space-y-3 text-sm">
+          <li class="flex gap-4"><span class="step-pill">01</span><span><strong>Generate a local Certificate Authority</strong> and TLS certs for Keycloak and the API.</span></li>
+          <li class="flex gap-4"><span class="step-pill">02</span><span><strong>Boot Keycloak</strong> with a pre-imported realm defining two clients: a resource server and a machine client.</span></li>
+          <li class="flex gap-4"><span class="step-pill">03</span><span><strong>Build a Go API</strong> that fetches Keycloak's public keys and verifies every incoming JWT.</span></li>
+          <li class="flex gap-4"><span class="step-pill">04</span><span><strong>Write a Python client</strong> that exchanges its credentials for a token, then calls the API.</span></li>
+          <li class="flex gap-4"><span class="step-pill">05</span><span><strong>Prove the model works</strong> by showing unauthenticated and forged-token calls fail.</span></li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ========== 01 CONCEPTS ========== -->
+    <section id="concepts" class="reveal">
+      <div class="flex items-baseline gap-6 mb-8">
+        <div class="section-num">01</div>
+        <div>
+          <div class="text-[10px] tracking-[0.3em] text-rust font-bold">VOCABULARY</div>
+          <h2 class="display text-4xl md:text-5xl font-black leading-none">Core Concepts</h2>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed mb-6">Five ideas underpin everything that follows. Click each term for the full briefing.</p>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <button class="concept-card border-2 border-ink bg-paper p-5 text-left hover:bg-bone shadow-hard-sm hover:translate-x-[-1px] hover:translate-y-[-1px] transition" data-term="oidc">
+          <div class="text-[10px] tracking-widest text-rust font-bold">PROTOCOL</div>
+          <div class="display text-xl font-black mt-1">OIDC</div>
+          <div class="text-xs mt-2 opacity-80">OAuth 2.0 with identity on top. How we prove <em>who</em> an actor is.</div>
+        </button>
+        <button class="concept-card border-2 border-ink bg-paper p-5 text-left hover:bg-bone shadow-hard-sm hover:translate-x-[-1px] hover:translate-y-[-1px] transition" data-term="jwt">
+          <div class="text-[10px] tracking-widest text-rust font-bold">DATA FORMAT</div>
+          <div class="display text-xl font-black mt-1">JWT</div>
+          <div class="text-xs mt-2 opacity-80">A cryptographically signed claim packet. Three dot-separated base64 blobs.</div>
+        </button>
+        <button class="concept-card border-2 border-ink bg-paper p-5 text-left hover:bg-bone shadow-hard-sm hover:translate-x-[-1px] hover:translate-y-[-1px] transition" data-term="jwks">
+          <div class="text-[10px] tracking-widest text-rust font-bold">ENDPOINT</div>
+          <div class="display text-xl font-black mt-1">JWKS</div>
+          <div class="text-xs mt-2 opacity-80">The public keys the API uses to verify token signatures. Fetched live.</div>
+        </button>
+        <button class="concept-card border-2 border-ink bg-paper p-5 text-left hover:bg-bone shadow-hard-sm hover:translate-x-[-1px] hover:translate-y-[-1px] transition" data-term="ccgrant">
+          <div class="text-[10px] tracking-widest text-rust font-bold">AUTH FLOW</div>
+          <div class="display text-xl font-black mt-1">Client Credentials</div>
+          <div class="text-xs mt-2 opacity-80">Machine-to-machine auth. No user sits at a keyboard.</div>
+        </button>
+        <button class="concept-card border-2 border-ink bg-paper p-5 text-left hover:bg-bone shadow-hard-sm hover:translate-x-[-1px] hover:translate-y-[-1px] transition" data-term="mtls">
+          <div class="text-[10px] tracking-widest text-rust font-bold">TRANSPORT</div>
+          <div class="display text-xl font-black mt-1">TLS</div>
+          <div class="text-xs mt-2 opacity-80">Encryption + server identity proof. The <em>plumbing</em> of Zero Trust.</div>
+        </button>
+        <button class="concept-card border-2 border-ink bg-paper p-5 text-left hover:bg-bone shadow-hard-sm hover:translate-x-[-1px] hover:translate-y-[-1px] transition" data-term="audience">
+          <div class="text-[10px] tracking-widest text-rust font-bold">JWT CLAIM</div>
+          <div class="display text-xl font-black mt-1">Audience (aud)</div>
+          <div class="text-xs mt-2 opacity-80">"This token is only valid for service X." Prevents token reuse.</div>
+        </button>
+      </div>
+    </section>
+
+    <!-- ========== 02 ARCHITECTURE DIAGRAM ========== -->
+    <section id="architecture" class="reveal">
+      <div class="flex items-baseline gap-6 mb-8">
+        <div class="section-num">02</div>
+        <div>
+          <div class="text-[10px] tracking-[0.3em] text-rust font-bold">SYSTEM</div>
+          <h2 class="display text-4xl md:text-5xl font-black leading-none">How It Works</h2>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed mb-8">Follow the numbered arrows. Every hop crosses a TLS boundary; every request carries its own credentials.</p>
+
+      <div class="border-2 border-ink bg-paper p-4 md:p-8 shadow-hard overflow-x-auto">
+        <svg viewBox="0 0 900 540" class="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#0a0a0a"/>
+            </marker>
+            <marker id="arrow-rust" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#c14a1a"/>
+            </marker>
+            <marker id="arrow-moss" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#3a5a3a"/>
+            </marker>
+            <pattern id="hatch" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+              <line x1="0" y1="0" x2="0" y2="8" stroke="#0a0a0a" stroke-width="0.5" opacity="0.15"/>
+            </pattern>
+          </defs>
+
+          <!-- Docker network boundary -->
+          <rect x="20" y="60" width="860" height="460" fill="url(#hatch)" stroke="#0a0a0a" stroke-width="2" stroke-dasharray="8 4"/>
+          <rect x="20" y="60" width="180" height="22" fill="#0a0a0a"/>
+          <text x="32" y="76" fill="#d4a017" font-family="JetBrains Mono" font-size="11" font-weight="700" letter-spacing="1">DOCKER NETWORK: ztnet</text>
+
+          <!-- POSTGRES -->
+          <g>
+            <rect x="50" y="400" width="170" height="90" fill="#f5f1e8" stroke="#0a0a0a" stroke-width="2"/>
+            <rect x="50" y="400" width="170" height="22" fill="#0a0a0a"/>
+            <text x="58" y="416" fill="#d4a017" font-family="JetBrains Mono" font-size="10" font-weight="700">POSTGRES:16</text>
+            <text x="58" y="446" fill="#0a0a0a" font-family="Fraunces" font-size="18" font-weight="900">Database</text>
+            <text x="58" y="470" fill="#4a4a4a" font-family="JetBrains Mono" font-size="10">Keycloak state</text>
+          </g>
+
+          <!-- KEYCLOAK -->
+          <g>
+            <rect x="280" y="260" width="220" height="180" fill="#fef3d0" stroke="#0a0a0a" stroke-width="2"/>
+            <rect x="280" y="260" width="220" height="22" fill="#0a0a0a"/>
+            <text x="288" y="276" fill="#d4a017" font-family="JetBrains Mono" font-size="10" font-weight="700">KEYCLOAK:24 (TLS :8443)</text>
+            <text x="288" y="308" fill="#0a0a0a" font-family="Fraunces" font-size="22" font-weight="900">Identity</text>
+            <text x="288" y="332" fill="#0a0a0a" font-family="Fraunces" font-size="22" font-weight="900">Provider</text>
+            <line x1="288" y1="346" x2="488" y2="346" stroke="#0a0a0a" stroke-width="1"/>
+            <text x="288" y="362" fill="#4a4a4a" font-family="JetBrains Mono" font-size="10">• issues JWTs</text>
+            <text x="288" y="378" fill="#4a4a4a" font-family="JetBrains Mono" font-size="10">• hosts /jwks.json</text>
+            <text x="288" y="394" fill="#4a4a4a" font-family="JetBrains Mono" font-size="10">• signs w/ RS256</text>
+            <text x="288" y="410" fill="#4a4a4a" font-family="JetBrains Mono" font-size="10">• realm=zerotrust</text>
+          </g>
+
+          <!-- GO API -->
+          <g>
+            <rect x="580" y="260" width="220" height="180" fill="#e0ecf3" stroke="#0a0a0a" stroke-width="2"/>
+            <rect x="580" y="260" width="220" height="22" fill="#0a0a0a"/>
+            <text x="588" y="276" fill="#d4a017" font-family="JetBrains Mono" font-size="10" font-weight="700">GO API (TLS :8444)</text>
+            <text x="588" y="308" fill="#0a0a0a" font-family="Fraunces" font-size="22" font-weight="900">Resource</text>
+            <text x="588" y="332" fill="#0a0a0a" font-family="Fraunces" font-size="22" font-weight="900">Server</text>
+            <line x1="588" y1="346" x2="788" y2="346" stroke="#0a0a0a" stroke-width="1"/>
+            <text x="588" y="362" fill="#4a4a4a" font-family="JetBrains Mono" font-size="10">• verifies signature</text>
+            <text x="588" y="378" fill="#4a4a4a" font-family="JetBrains Mono" font-size="10">• checks iss / aud</text>
+            <text x="588" y="394" fill="#4a4a4a" font-family="JetBrains Mono" font-size="10">• checks exp</text>
+            <text x="588" y="410" fill="#4a4a4a" font-family="JetBrains Mono" font-size="10">• returns JSON</text>
+          </g>
+
+          <!-- PYTHON CLIENT -->
+          <g>
+            <rect x="340" y="100" width="220" height="110" fill="#d8e8d8" stroke="#0a0a0a" stroke-width="2"/>
+            <rect x="340" y="100" width="220" height="22" fill="#0a0a0a"/>
+            <text x="348" y="116" fill="#d4a017" font-family="JetBrains Mono" font-size="10" font-weight="700">PYTHON CLIENT</text>
+            <text x="348" y="148" fill="#0a0a0a" font-family="Fraunces" font-size="22" font-weight="900">Machine User</text>
+            <text x="348" y="174" fill="#4a4a4a" font-family="JetBrains Mono" font-size="10">client_id + secret</text>
+            <text x="348" y="192" fill="#4a4a4a" font-family="JetBrains Mono" font-size="10">→ exchanges for JWT</text>
+          </g>
+
+          <!-- FLOW 1: client → keycloak -->
+          <path d="M 400 210 Q 370 235 385 260" fill="none" stroke="#c14a1a" stroke-width="2.5" class="flow-line" marker-end="url(#arrow-rust)"/>
+          <circle cx="350" cy="235" r="12" fill="#c14a1a"/>
+          <text x="350" y="239" fill="#f5f1e8" font-family="JetBrains Mono" font-size="11" font-weight="700" text-anchor="middle">1</text>
+          <text x="230" y="232" fill="#c14a1a" font-family="JetBrains Mono" font-size="10" font-weight="700">POST /token (creds)</text>
+
+          <!-- FLOW 2: keycloak → client (token) -->
+          <path d="M 440 260 Q 480 230 500 210" fill="none" stroke="#3a5a3a" stroke-width="2.5" class="flow-line" marker-end="url(#arrow-moss)"/>
+          <circle cx="490" cy="235" r="12" fill="#3a5a3a"/>
+          <text x="490" y="239" fill="#f5f1e8" font-family="JetBrains Mono" font-size="11" font-weight="700" text-anchor="middle">2</text>
+          <text x="550" y="232" fill="#3a5a3a" font-family="JetBrains Mono" font-size="10" font-weight="700">signed JWT ←</text>
+
+          <!-- FLOW 3: client → API -->
+          <path d="M 560 155 Q 680 155 680 255" fill="none" stroke="#c14a1a" stroke-width="2.5" class="flow-line" marker-end="url(#arrow-rust)"/>
+          <circle cx="680" cy="200" r="12" fill="#c14a1a"/>
+          <text x="680" y="204" fill="#f5f1e8" font-family="JetBrains Mono" font-size="11" font-weight="700" text-anchor="middle">3</text>
+          <text x="700" y="180" fill="#c14a1a" font-family="JetBrains Mono" font-size="10" font-weight="700">GET /api/resource</text>
+          <text x="700" y="196" fill="#c14a1a" font-family="JetBrains Mono" font-size="10">Authorization: Bearer …</text>
+
+          <!-- FLOW 4: API → Keycloak (JWKS) -->
+          <path d="M 580 350 Q 540 350 500 350" fill="none" stroke="#2d5f7a" stroke-width="2.5" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+          <circle cx="540" cy="340" r="12" fill="#2d5f7a"/>
+          <text x="540" y="344" fill="#f5f1e8" font-family="JetBrains Mono" font-size="11" font-weight="700" text-anchor="middle">4</text>
+          <text x="490" y="375" fill="#2d5f7a" font-family="JetBrains Mono" font-size="9" font-weight="700">GET /jwks.json</text>
+          <text x="490" y="388" fill="#2d5f7a" font-family="JetBrains Mono" font-size="9">(pub keys, cached)</text>
+
+          <!-- FLOW 5: keycloak → postgres -->
+          <path d="M 280 400 Q 250 400 220 420" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-dasharray="3 3" marker-end="url(#arrow)"/>
+          <text x="200" y="395" fill="#4a4a4a" font-family="JetBrains Mono" font-size="9">state</text>
+
+          <!-- Legend -->
+          <g transform="translate(40, 500)">
+            <line x1="0" y1="0" x2="30" y2="0" stroke="#c14a1a" stroke-width="2.5"/>
+            <text x="36" y="4" fill="#0a0a0a" font-family="JetBrains Mono" font-size="9" font-weight="700">REQUEST</text>
+            <line x1="120" y1="0" x2="150" y2="0" stroke="#3a5a3a" stroke-width="2.5"/>
+            <text x="156" y="4" fill="#0a0a0a" font-family="JetBrains Mono" font-size="9" font-weight="700">RESPONSE</text>
+            <line x1="240" y1="0" x2="270" y2="0" stroke="#2d5f7a" stroke-width="2.5" stroke-dasharray="4 3"/>
+            <text x="276" y="4" fill="#0a0a0a" font-family="JetBrains Mono" font-size="9" font-weight="700">DISCOVERY</text>
+            <text x="700" y="4" fill="#4a4a4a" font-family="JetBrains Mono" font-size="9">ALL LINES = TLS</text>
+          </g>
+        </svg>
+      </div>
+
+      <div class="mt-6 grid md:grid-cols-2 gap-4 text-sm">
+        <div class="callout">
+          <span class="callout-label">READ THIS SLOWLY</span>
+          <p class="mt-2 leading-relaxed">Notice <strong>arrow #4</strong>: the API reaches <em>out</em> to Keycloak to fetch public keys. It doesn't have them hardcoded. This is why key rotation "just works" — Keycloak rolls the key, the API re-fetches JWKS, life goes on.</p>
+        </div>
+        <div class="callout warn">
+          <span class="callout-label">ZERO TRUST MOMENT</span>
+          <p class="mt-2 leading-relaxed">The Python client and the API sit on the <em>same Docker network</em>. In a castle-and-moat world, that shared network would be enough. Here it isn't. Arrow #3 must carry a valid JWT or arrow #3 fails.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 03 PROJECT STRUCTURE ========== -->
+    <section id="structure" class="reveal">
+      <div class="flex items-baseline gap-6 mb-8">
+        <div class="section-num">03</div>
+        <div>
+          <div class="text-[10px] tracking-[0.3em] text-rust font-bold">LAYOUT</div>
+          <h2 class="display text-4xl md:text-5xl font-black leading-none">Project Structure</h2>
+        </div>
+      </div>
+
+      <p class="mb-6 text-base leading-relaxed">Every file we'll walk through in this tutorial, in its place on disk:</p>
+
+      <pre class="code-block"><code><span class="tok-c">zero-trust-demo/</span>
+├── <span class="tok-k">docker-compose.yml</span>       <span class="tok-c"># Orchestrates all 4 services</span>
+├── <span class="tok-k">certs/</span>
+│   └── generate-certs.sh    <span class="tok-c"># Creates local CA + server certs</span>
+├── <span class="tok-k">keycloak/</span>
+│   └── realm-export.json    <span class="tok-c"># Realm + clients, imported at boot</span>
+├── <span class="tok-k">api/</span>
+│   ├── Dockerfile           <span class="tok-c"># Multi-stage Go build</span>
+│   ├── go.mod               <span class="tok-c"># Go module + one dependency</span>
+│   └── main.go              <span class="tok-c"># ~115 lines; the entire API</span>
+└── <span class="tok-k">client/</span>
+    ├── Dockerfile           <span class="tok-c"># Thin Python image</span>
+    ├── requirements.txt     <span class="tok-c"># Just `requests`</span>
+    └── client.py            <span class="tok-c"># The caller</span></code></pre>
+    </section>
+
+    <!-- ========== 04 CERTS ========== -->
+    <section id="certs" class="reveal">
+      <div class="flex items-baseline gap-6 mb-8">
+        <div class="section-num">04</div>
+        <div>
+          <div class="text-[10px] tracking-[0.3em] text-rust font-bold">FILE · certs/generate-certs.sh</div>
+          <h2 class="display text-4xl md:text-5xl font-black leading-none">Minting a Local CA</h2>
+        </div>
+      </div>
+
+      <p class="mb-4 text-base leading-relaxed">Before we can do TLS, we need certificates. In production you'd get these from <span class="term" data-term="lets-encrypt">Let's Encrypt</span> or your internal <span class="term" data-term="ca">Certificate Authority</span>. For local dev we mint our own.</p>
+
+      <div class="callout warn mb-6">
+        <span class="callout-label">WHY A CUSTOM CA?</span>
+        <p class="mt-2 text-sm leading-relaxed">Because inside Docker, services reach each other by container name (<code>keycloak</code>, <code>api</code>), not by a public hostname. Let's Encrypt won't issue a cert for the name <code>keycloak</code>. So we become our own CA, issue certs with <span class="term" data-term="san">Subject Alternative Names</span> matching the container names, and trust our own CA inside every container.</p>
+      </div>
+
+      <pre class="code-block" id="certs-code"><code><span class="line"><span class="ln">1</span><span class="tok-c">#!/bin/bash</span></span><span class="line"><span class="ln">2</span><span class="tok-k">set</span> -euo pipefail</span><span class="line"><span class="ln">3</span></span><span class="line"><span class="ln">4</span><span class="tok-k">cd</span> <span class="tok-s">"$(dirname "$0")"</span></span><span class="line"><span class="ln">5</span></span><span class="line"><span class="ln">6</span><span class="tok-c"># ─── Generate a self-signed root CA ───────────────────</span></span><span class="line"><span class="ln">7</span>openssl genrsa -out ca.key <span class="tok-num">4096</span></span><span class="line"><span class="ln">8</span>openssl req -x509 -new -nodes -key ca.key -sha256 <span class="tok-p">\</span></span><span class="line"><span class="ln">9</span>  -days <span class="tok-num">365</span> -out ca.crt -subj <span class="tok-s">"/CN=ZeroTrustLocalCA"</span></span><span class="line"><span class="ln">10</span></span><span class="line"><span class="ln">11</span><span class="tok-c"># ─── Extensions file: CRITICAL for Docker name resolution ──</span></span><span class="line"><span class="ln">12</span><span class="tok-k">cat</span> &gt; keycloak.ext &lt;&lt;EOF</span><span class="line"><span class="ln">13</span>basicConstraints=CA:FALSE</span><span class="line"><span class="ln">14</span>subjectAltName = @alt_names</span><span class="line"><span class="ln">15</span>[alt_names]</span><span class="line"><span class="ln">16</span>DNS.1 = keycloak</span><span class="line"><span class="ln">17</span>DNS.2 = localhost</span><span class="line"><span class="ln">18</span>EOF</span><span class="line"><span class="ln">19</span></span><span class="line"><span class="ln">20</span><span class="tok-c"># ─── Sign a server cert for Keycloak ───────────────────</span></span><span class="line"><span class="ln">21</span>openssl genrsa -out keycloak.key <span class="tok-num">2048</span></span><span class="line"><span class="ln">22</span>openssl req -new -key keycloak.key -out keycloak.csr <span class="tok-p">\</span></span><span class="line"><span class="ln">23</span>  -subj <span class="tok-s">"/CN=keycloak"</span></span><span class="line"><span class="ln">24</span>openssl x509 -req -in keycloak.csr -CA ca.crt -CAkey ca.key <span class="tok-p">\</span></span><span class="line"><span class="ln">25</span>  -CAcreateserial -out keycloak.crt -days <span class="tok-num">365</span> <span class="tok-p">\</span></span><span class="line"><span class="ln">26</span>  -sha256 -extfile keycloak.ext</span></code></pre>
+
+      <h3 class="display text-2xl font-black mt-8 mb-4">Line by Line</h3>
+      <div class="space-y-2">
+        <div class="annot-line"><span class="linenum">L2</span><code>set -euo pipefail</code> &mdash; bash strict mode. Fail on any error (<code>-e</code>), unset variable (<code>-u</code>), or mid-pipe failure (<code>-o pipefail</code>). Standard defensive shell.</div>
+        <div class="annot-line"><span class="linenum">L7</span>Generates a 4096-bit <strong>RSA private key</strong> for the CA. 4096 bits is overkill for a dev CA (2048 would do) but we're being paranoid.</div>
+        <div class="annot-line"><span class="linenum">L8–9</span><code>req -x509</code> creates a <em>self-signed</em> certificate. A real CA is the trust root — nothing signs it. The <code>-subj "/CN=ZeroTrustLocalCA"</code> sets its identity.</div>
+        <div class="annot-line"><span class="linenum">L12–18</span>The <strong>extensions file</strong>. <code>subjectAltName</code> lists the hostnames this cert will be valid for. Modern TLS ignores the CN field entirely — <em>only</em> SANs are trusted. <code>DNS.1 = keycloak</code> is what makes <code>https://keycloak:8443</code> work <em>inside Docker</em>.</div>
+        <div class="annot-line"><span class="linenum">L21</span>Keycloak's <strong>own</strong> private key. Separate from the CA's. The server holds this; the client never sees it.</div>
+        <div class="annot-line"><span class="linenum">L22–23</span>Creates a <strong>Certificate Signing Request</strong> (CSR). Think of it as: "Dear CA, please attest that this public key belongs to <code>keycloak</code>."</div>
+        <div class="annot-line"><span class="linenum">L24–26</span>The CA signs the CSR, producing <code>keycloak.crt</code>. Now Keycloak has a cert that any container which trusts <code>ca.crt</code> will accept.</div>
+      </div>
+    </section>
+
+    <!-- ========== 05 DOCKER COMPOSE ========== -->
+    <section id="compose" class="reveal">
+      <div class="flex items-baseline gap-6 mb-8">
+        <div class="section-num">05</div>
+        <div>
+          <div class="text-[10px] tracking-[0.3em] text-rust font-bold">FILE · docker-compose.yml</div>
+          <h2 class="display text-4xl md:text-5xl font-black leading-none">Orchestration</h2>
+        </div>
+      </div>
+
+      <p class="mb-6 text-base leading-relaxed">One file describes four services, their wiring, their volumes, and their startup order. This is the <em>blueprint</em> of the lab.</p>
+
+      <pre class="code-block"><code><span class="line"><span class="ln">1</span><span class="tok-k">services:</span></span><span class="line"><span class="ln">2</span>  <span class="tok-t">postgres:</span></span><span class="line"><span class="ln">3</span>    <span class="tok-k">image:</span> <span class="tok-s">postgres:16-alpine</span></span><span class="line"><span class="ln">4</span>    <span class="tok-k">environment:</span></span><span class="line"><span class="ln">5</span>      POSTGRES_DB: <span class="tok-s">keycloak</span></span><span class="line"><span class="ln">6</span>      POSTGRES_USER: <span class="tok-s">keycloak</span></span><span class="line"><span class="ln">7</span>      POSTGRES_PASSWORD: <span class="tok-s">keycloak_pw</span></span><span class="line"><span class="ln">8</span>    <span class="tok-k">healthcheck:</span></span><span class="line"><span class="ln">9</span>      test: [<span class="tok-s">"CMD-SHELL"</span>, <span class="tok-s">"pg_isready -U keycloak"</span>]</span><span class="line"><span class="ln">10</span>    <span class="tok-k">networks:</span> [<span class="tok-s">ztnet</span>]</span><span class="line"><span class="ln">11</span></span><span class="line"><span class="ln">12</span>  <span class="tok-t">keycloak:</span></span><span class="line"><span class="ln">13</span>    <span class="tok-k">image:</span> <span class="tok-s">quay.io/keycloak/keycloak:24.0</span></span><span class="line"><span class="ln">14</span>    <span class="tok-k">command:</span> <span class="tok-s">start --import-realm --health-enabled=true</span></span><span class="line"><span class="ln">15</span>    <span class="tok-k">environment:</span></span><span class="line"><span class="ln">16</span>      KC_DB: <span class="tok-s">postgres</span></span><span class="line"><span class="ln">17</span>      KC_DB_URL: <span class="tok-s">jdbc:postgresql://postgres:5432/keycloak</span></span><span class="line"><span class="ln">18</span>      KC_HTTPS_CERTIFICATE_FILE: <span class="tok-s">/etc/x509/keycloak.crt</span></span><span class="line"><span class="ln">19</span>      KC_HTTPS_CERTIFICATE_KEY_FILE: <span class="tok-s">/etc/x509/keycloak.key</span></span><span class="line"><span class="ln">20</span>      KC_HTTP_ENABLED: <span class="tok-s">"false"</span></span><span class="line"><span class="ln">21</span>      KEYCLOAK_ADMIN: <span class="tok-s">admin</span></span><span class="line"><span class="ln">22</span>      KEYCLOAK_ADMIN_PASSWORD: <span class="tok-s">admin</span></span><span class="line"><span class="ln">23</span>    <span class="tok-k">ports:</span> [<span class="tok-s">"8443:8443"</span>]</span><span class="line"><span class="ln">24</span>    <span class="tok-k">volumes:</span></span><span class="line"><span class="ln">25</span>      - <span class="tok-s">./certs:/etc/x509:ro</span></span><span class="line"><span class="ln">26</span>      - <span class="tok-s">./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro</span></span><span class="line"><span class="ln">27</span>    <span class="tok-k">depends_on:</span></span><span class="line"><span class="ln">28</span>      postgres: { condition: <span class="tok-s">service_healthy</span> }</span><span class="line"><span class="ln">29</span>    <span class="tok-k">healthcheck:</span> <span class="tok-c"># probes /health/ready on mgmt port 9000</span></span><span class="line"><span class="ln">30</span>      test: [<span class="tok-s">"CMD-SHELL"</span>, <span class="tok-s">"..."</span>]</span><span class="line"><span class="ln">31</span>    <span class="tok-k">networks:</span> [<span class="tok-s">ztnet</span>]</span><span class="line"><span class="ln">32</span></span><span class="line"><span class="ln">33</span>  <span class="tok-t">api:</span></span><span class="line"><span class="ln">34</span>    <span class="tok-k">build:</span> <span class="tok-s">./api</span></span><span class="line"><span class="ln">35</span>    <span class="tok-k">environment:</span></span><span class="line"><span class="ln">36</span>      OIDC_ISSUER: <span class="tok-s">https://keycloak:8443/realms/zerotrust</span></span><span class="line"><span class="ln">37</span>      OIDC_AUDIENCE: <span class="tok-s">zerotrust-api</span></span><span class="line"><span class="ln">38</span>    <span class="tok-k">volumes:</span> [<span class="tok-s">"./certs:/certs:ro"</span>]</span><span class="line"><span class="ln">39</span>    <span class="tok-k">depends_on:</span></span><span class="line"><span class="ln">40</span>      keycloak: { condition: <span class="tok-s">service_healthy</span> }</span><span class="line"><span class="ln">41</span>    <span class="tok-k">networks:</span> [<span class="tok-s">ztnet</span>]</span><span class="line"><span class="ln">42</span></span><span class="line"><span class="ln">43</span>  <span class="tok-t">client:</span></span><span class="line"><span class="ln">44</span>    <span class="tok-k">build:</span> <span class="tok-s">./client</span></span><span class="line"><span class="ln">45</span>    <span class="tok-k">environment:</span></span><span class="line"><span class="ln">46</span>      KEYCLOAK_URL: <span class="tok-s">https://keycloak:8443</span></span><span class="line"><span class="ln">47</span>      API_URL: <span class="tok-s">https://api:8444</span></span><span class="line"><span class="ln">48</span>      CLIENT_ID: <span class="tok-s">python-client</span></span><span class="line"><span class="ln">49</span>      CLIENT_SECRET: <span class="tok-s">change-me-in-realm-export</span></span><span class="line"><span class="ln">50</span>      CA_CERT: <span class="tok-s">/certs/ca.crt</span></span><span class="line"><span class="ln">51</span>    <span class="tok-k">volumes:</span> [<span class="tok-s">"./certs:/certs:ro"</span>]</span><span class="line"><span class="ln">52</span>    <span class="tok-k">depends_on:</span> [<span class="tok-s">api</span>]</span><span class="line"><span class="ln">53</span>    <span class="tok-k">networks:</span> [<span class="tok-s">ztnet</span>]</span><span class="line"><span class="ln">54</span></span><span class="line"><span class="ln">55</span><span class="tok-k">networks:</span></span><span class="line"><span class="ln">56</span>  <span class="tok-t">ztnet:</span> { driver: <span class="tok-s">bridge</span> }</span></code></pre>
+
+      <h3 class="display text-2xl font-black mt-8 mb-4">Line by Line</h3>
+      <div class="space-y-2">
+        <div class="annot-line"><span class="linenum">L2–10</span><strong>Postgres.</strong> Keycloak needs a database to persist realms, users, sessions. The <span class="term" data-term="healthcheck">healthcheck</span> lets us chain dependencies properly.</div>
+        <div class="annot-line"><span class="linenum">L13</span>Keycloak <strong>24</strong>. The Keycloak config API changed significantly at v17+ — everything uses <code>KC_*</code> env vars now.</div>
+        <div class="annot-line"><span class="linenum">L14</span><code>--import-realm</code> tells Keycloak to boot and automatically import any JSON file in <code>/opt/keycloak/data/import/</code>. This is how we ship the tutorial with a pre-configured realm.</div>
+        <div class="annot-line"><span class="linenum">L18–20</span>Keycloak is explicitly told to serve TLS and <em>refuse</em> plain HTTP. Zero Trust: no insecure port, ever.</div>
+        <div class="annot-line"><span class="linenum">L25</span><strong>Directory bind-mount</strong> (not file). Mounting individual files has a footgun: if the file doesn't exist on the host, Docker silently creates a directory. Mounting the whole folder avoids this.</div>
+        <div class="annot-line"><span class="linenum">L28</span><code>service_healthy</code> &mdash; the API won't start until Keycloak's healthcheck goes green. Prevents the classic "connection refused" race condition.</div>
+        <div class="annot-line"><span class="linenum">L36</span>The <strong>issuer URL</strong>. This is the one Keycloak bakes into the <code>iss</code> claim of every JWT. The API will later check that incoming tokens match this exact string.</div>
+        <div class="annot-line"><span class="linenum">L37</span>The <strong>audience</strong> — the client ID in Keycloak that represents <em>this API</em>. Tokens not intended for <code>zerotrust-api</code> will be rejected.</div>
+        <div class="annot-line"><span class="linenum">L46–47</span>Inside the Docker network, services use container names. <code>https://keycloak:8443</code> resolves via Docker's embedded DNS. This is why our cert's SAN includes <code>keycloak</code>.</div>
+        <div class="annot-line"><span class="linenum">L49</span>The client secret. In production this lives in a secret manager, <em>not</em> in version control.</div>
+        <div class="annot-line"><span class="linenum">L56</span>A user-defined <strong>bridge network</strong>. Services on the same bridge can reach each other by name. Everything outside the bridge must come through published ports (only 8443 and 8444 are exposed).</div>
+      </div>
+    </section>
+
+    <!-- ========== 06 REALM ========== -->
+    <section id="realm" class="reveal">
+      <div class="flex items-baseline gap-6 mb-8">
+        <div class="section-num">06</div>
+        <div>
+          <div class="text-[10px] tracking-[0.3em] text-rust font-bold">FILE · keycloak/realm-export.json</div>
+          <h2 class="display text-4xl md:text-5xl font-black leading-none">The Realm</h2>
+        </div>
+      </div>
+
+      <p class="mb-6 text-base leading-relaxed">A Keycloak <span class="term" data-term="realm">realm</span> is an isolated tenant — users, groups, roles, clients. We ship a pre-configured one so the stack works at first boot.</p>
+
+      <pre class="code-block"><code><span class="line"><span class="ln">1</span>{</span><span class="line"><span class="ln">2</span>  <span class="tok-k">"realm"</span>: <span class="tok-s">"zerotrust"</span>,</span><span class="line"><span class="ln">3</span>  <span class="tok-k">"enabled"</span>: <span class="tok-num">true</span>,</span><span class="line"><span class="ln">4</span>  <span class="tok-k">"accessTokenLifespan"</span>: <span class="tok-num">300</span>,</span><span class="line"><span class="ln">5</span>  <span class="tok-k">"clients"</span>: [</span><span class="line"><span class="ln">6</span>    {</span><span class="line"><span class="ln">7</span>      <span class="tok-k">"clientId"</span>: <span class="tok-s">"zerotrust-api"</span>,</span><span class="line"><span class="ln">8</span>      <span class="tok-k">"bearerOnly"</span>: <span class="tok-num">true</span>,</span><span class="line"><span class="ln">9</span>      <span class="tok-k">"publicClient"</span>: <span class="tok-num">false</span></span><span class="line"><span class="ln">10</span>    },</span><span class="line"><span class="ln">11</span>    {</span><span class="line"><span class="ln">12</span>      <span class="tok-k">"clientId"</span>: <span class="tok-s">"python-client"</span>,</span><span class="line"><span class="ln">13</span>      <span class="tok-k">"secret"</span>: <span class="tok-s">"change-me-in-realm-export"</span>,</span><span class="line"><span class="ln">14</span>      <span class="tok-k">"serviceAccountsEnabled"</span>: <span class="tok-num">true</span>,</span><span class="line"><span class="ln">15</span>      <span class="tok-k">"standardFlowEnabled"</span>: <span class="tok-num">false</span>,</span><span class="line"><span class="ln">16</span>      <span class="tok-k">"directAccessGrantsEnabled"</span>: <span class="tok-num">false</span>,</span><span class="line"><span class="ln">17</span>      <span class="tok-k">"protocolMappers"</span>: [</span><span class="line"><span class="ln">18</span>        {</span><span class="line"><span class="ln">19</span>          <span class="tok-k">"name"</span>: <span class="tok-s">"audience-zerotrust-api"</span>,</span><span class="line"><span class="ln">20</span>          <span class="tok-k">"protocolMapper"</span>: <span class="tok-s">"oidc-audience-mapper"</span>,</span><span class="line"><span class="ln">21</span>          <span class="tok-k">"config"</span>: {</span><span class="line"><span class="ln">22</span>            <span class="tok-k">"included.client.audience"</span>: <span class="tok-s">"zerotrust-api"</span>,</span><span class="line"><span class="ln">23</span>            <span class="tok-k">"access.token.claim"</span>: <span class="tok-s">"true"</span></span><span class="line"><span class="ln">24</span>          }</span><span class="line"><span class="ln">25</span>        }</span><span class="line"><span class="ln">26</span>      ]</span><span class="line"><span class="ln">27</span>    }</span><span class="line"><span class="ln">28</span>  ]</span><span class="line"><span class="ln">29</span>}</span></code></pre>
+
+      <h3 class="display text-2xl font-black mt-8 mb-4">Line by Line</h3>
+      <div class="space-y-2">
+        <div class="annot-line"><span class="linenum">L4</span><strong>Access token lifespan: 300 seconds</strong> (5 min). Short lifetimes limit blast radius if a token leaks. Clients must refresh.</div>
+        <div class="annot-line"><span class="linenum">L7–9</span>The <code>zerotrust-api</code> client represents <em>the resource server</em>. <code>bearerOnly: true</code> means "this client never initiates login flows — it only accepts bearer tokens." It's the <em>target</em> of tokens, not an issuer.</div>
+        <div class="annot-line"><span class="linenum">L12–13</span>The <code>python-client</code> is the <em>caller</em>. It has a secret it trades for tokens.</div>
+        <div class="annot-line"><span class="linenum">L14</span><code>serviceAccountsEnabled: true</code> flips on the <span class="term" data-term="ccgrant">client credentials grant</span>. Keycloak will auto-create a "service account user" attached to this client.</div>
+        <div class="annot-line"><span class="linenum">L15–16</span>We <em>explicitly disable</em> the browser redirect flow and the password grant. This client is a backend service — it has one job, client-credentials. Disabling unused flows reduces attack surface.</div>
+        <div class="annot-line"><span class="linenum">L17–26</span>The <strong>audience protocol mapper</strong>. By default, Keycloak's client-credentials tokens have <code>aud: "account"</code>, which the Go API would reject. This mapper injects <code>zerotrust-api</code> into the <code>aud</code> array so the API's check passes.</div>
+      </div>
+
+      <div class="mt-6 callout danger">
+        <span class="callout-label">COMMON BUG</span>
+        <p class="mt-2 text-sm leading-relaxed">Forget the audience mapper and you'll see <code>oidc: expected audience "zerotrust-api"</code> in the API logs even though the token is otherwise valid. 90% of first-time Keycloak + go-oidc integrations hit this.</p>
+      </div>
+    </section>
+
+    <!-- ========== 07 GO API ========== -->
+    <section id="api" class="reveal">
+      <div class="flex items-baseline gap-6 mb-8">
+        <div class="section-num">07</div>
+        <div>
+          <div class="text-[10px] tracking-[0.3em] text-rust font-bold">FILE · api/main.go</div>
+          <h2 class="display text-4xl md:text-5xl font-black leading-none">The Resource Server</h2>
+        </div>
+      </div>
+
+      <p class="mb-4 text-base leading-relaxed">The heart of the system. ~115 lines of Go that refuse to answer a single question without a signed, unexpired, correctly-addressed JWT.</p>
+
+      <h3 class="display text-2xl font-black mt-8 mb-3">7A · Imports & Dependencies</h3>
+
+      <pre class="code-block"><code><span class="line"><span class="ln">1</span><span class="tok-k">package</span> main</span><span class="line"><span class="ln">2</span></span><span class="line"><span class="ln">3</span><span class="tok-k">import</span> (</span><span class="line"><span class="ln">4</span>  <span class="tok-s">"context"</span></span><span class="line"><span class="ln">5</span>  <span class="tok-s">"crypto/tls"</span></span><span class="line"><span class="ln">6</span>  <span class="tok-s">"crypto/x509"</span></span><span class="line"><span class="ln">7</span>  <span class="tok-s">"encoding/json"</span></span><span class="line"><span class="ln">8</span>  <span class="tok-s">"log"</span></span><span class="line"><span class="ln">9</span>  <span class="tok-s">"net/http"</span></span><span class="line"><span class="ln">10</span>  <span class="tok-s">"os"</span></span><span class="line"><span class="ln">11</span>  <span class="tok-s">"strings"</span></span><span class="line"><span class="ln">12</span>  <span class="tok-s">"time"</span></span><span class="line"><span class="ln">13</span></span><span class="line"><span class="ln">14</span>  <span class="tok-s">"github.com/coreos/go-oidc/v3/oidc"</span></span><span class="line"><span class="ln">15</span>)</span></code></pre>
+
+      <div class="space-y-2 mt-4">
+        <div class="annot-line"><span class="linenum">L5–6</span><code>crypto/tls</code> + <code>crypto/x509</code> &mdash; Go's standard library for TLS. We'll build a custom TLS config that trusts our local CA.</div>
+        <div class="annot-line"><span class="linenum">L14</span><strong>The one external dependency:</strong> <span class="term" data-term="go-oidc">go-oidc</span> by CoreOS. It handles <span class="term" data-term="jwks">JWKS</span> fetching, signature verification, and claim validation. Worth reading the source of — it's about 2000 lines of very careful code.</div>
+      </div>
+
+      <h3 class="display text-2xl font-black mt-10 mb-3">7B · The Auth Middleware</h3>
+      <p class="text-sm mb-3 leading-relaxed">This function wraps every protected handler. Every. Single. Request. Runs through here.</p>
+
+      <pre class="code-block"><code><span class="line"><span class="ln">19</span><span class="tok-k">func</span> <span class="tok-f">authMiddleware</span>(next http.HandlerFunc) http.HandlerFunc {</span><span class="line"><span class="ln">20</span>  <span class="tok-k">return</span> <span class="tok-k">func</span>(w http.ResponseWriter, r *http.Request) {</span><span class="line"><span class="ln">21</span>    authHeader := r.Header.Get(<span class="tok-s">"Authorization"</span>)</span><span class="line"><span class="ln">22</span>    <span class="tok-k">if</span> !strings.HasPrefix(authHeader, <span class="tok-s">"Bearer "</span>) {</span><span class="line"><span class="ln">23</span>      http.Error(w, <span class="tok-s">"missing bearer token"</span>, http.StatusUnauthorized)</span><span class="line"><span class="ln">24</span>      <span class="tok-k">return</span></span><span class="line"><span class="ln">25</span>    }</span><span class="line"><span class="ln">26</span>    rawToken := strings.TrimPrefix(authHeader, <span class="tok-s">"Bearer "</span>)</span><span class="line"><span class="ln">27</span></span><span class="line"><span class="ln">28</span>    token, err := verifier.Verify(r.Context(), rawToken)</span><span class="line"><span class="ln">29</span>    <span class="tok-k">if</span> err != <span class="tok-k">nil</span> {</span><span class="line"><span class="ln">30</span>      log.Printf(<span class="tok-s">"token verification failed: %v"</span>, err)</span><span class="line"><span class="ln">31</span>      http.Error(w, <span class="tok-s">"invalid token"</span>, http.StatusUnauthorized)</span><span class="line"><span class="ln">32</span>      <span class="tok-k">return</span></span><span class="line"><span class="ln">33</span>    }</span><span class="line"><span class="ln">34</span></span><span class="line"><span class="ln">35</span>    <span class="tok-k">var</span> claims <span class="tok-k">map</span>[<span class="tok-t">string</span>]<span class="tok-k">interface</span>{}</span><span class="line"><span class="ln">36</span>    <span class="tok-k">if</span> err := token.Claims(&claims); err != <span class="tok-k">nil</span> {</span><span class="line"><span class="ln">37</span>      http.Error(w, <span class="tok-s">"claims parse error"</span>, http.StatusUnauthorized)</span><span class="line"><span class="ln">38</span>      <span class="tok-k">return</span></span><span class="line"><span class="ln">39</span>    }</span><span class="line"><span class="ln">40</span></span><span class="line"><span class="ln">41</span>    ctx := context.WithValue(r.Context(), <span class="tok-s">"claims"</span>, claims)</span><span class="line"><span class="ln">42</span>    next(w, r.WithContext(ctx))</span><span class="line"><span class="ln">43</span>  }</span><span class="line"><span class="ln">44</span>}</span></code></pre>
+
+      <div class="space-y-2 mt-4">
+        <div class="annot-line"><span class="linenum">L19</span>The <strong>middleware pattern</strong>. Takes a handler, returns a <em>wrapped</em> handler that runs auth first. Pure Go idiom.</div>
+        <div class="annot-line"><span class="linenum">L21–25</span>Extract the <code>Authorization: Bearer ...</code> header. No header &rarr; 401. <em>Before</em> any cryptographic work — fail fast.</div>
+        <div class="annot-line"><span class="linenum">L28</span><strong>The money line.</strong> <code>verifier.Verify()</code> does four things: parses the JWT, fetches JWKS if not cached, checks the RS256 signature, validates <code>iss</code> / <code>aud</code> / <code>exp</code>. If any step fails, <code>err</code> is non-nil.</div>
+        <div class="annot-line"><span class="linenum">L30</span>We log the reason server-side but send a generic <code>"invalid token"</code> to the client. <em>Never leak verification details to callers</em> — that's reconnaissance data for an attacker.</div>
+        <div class="annot-line"><span class="linenum">L35–39</span>Extract <span class="term" data-term="claims">claims</span> (the JSON payload) into a map for the downstream handler to use.</div>
+        <div class="annot-line"><span class="linenum">L41–42</span>Attach claims to the request context and call the next handler. The protected handler can now read <code>ctx.Value("claims")</code> safely — the token is validated.</div>
+      </div>
+
+      <h3 class="display text-2xl font-black mt-10 mb-3">7C · Bootstrapping the Verifier</h3>
+      <p class="text-sm mb-3 leading-relaxed">This runs once at startup. It's where we configure trust.</p>
+
+      <pre class="code-block"><code><span class="line"><span class="ln">57</span><span class="tok-k">func</span> <span class="tok-f">main</span>() {</span><span class="line"><span class="ln">58</span>  issuer := os.Getenv(<span class="tok-s">"OIDC_ISSUER"</span>)</span><span class="line"><span class="ln">59</span>  audience := os.Getenv(<span class="tok-s">"OIDC_AUDIENCE"</span>)</span><span class="line"><span class="ln">60</span></span><span class="line"><span class="ln">61</span>  caPEM, _ := os.ReadFile(os.Getenv(<span class="tok-s">"CA_CERT"</span>))</span><span class="line"><span class="ln">62</span>  caPool := x509.NewCertPool()</span><span class="line"><span class="ln">63</span>  caPool.AppendCertsFromPEM(caPEM)</span><span class="line"><span class="ln">64</span></span><span class="line"><span class="ln">65</span>  httpClient := &http.Client{</span><span class="line"><span class="ln">66</span>    Transport: &http.Transport{</span><span class="line"><span class="ln">67</span>      TLSClientConfig: &tls.Config{RootCAs: caPool},</span><span class="line"><span class="ln">68</span>    },</span><span class="line"><span class="ln">69</span>  }</span><span class="line"><span class="ln">70</span>  ctx := oidc.ClientContext(context.Background(), httpClient)</span><span class="line"><span class="ln">71</span></span><span class="line"><span class="ln">72</span>  <span class="tok-k">var</span> provider *oidc.Provider</span><span class="line"><span class="ln">73</span>  <span class="tok-k">for</span> attempt := <span class="tok-num">1</span>; attempt &lt;= <span class="tok-num">60</span>; attempt++ {</span><span class="line"><span class="ln">74</span>    provider, err = oidc.NewProvider(ctx, issuer)</span><span class="line"><span class="ln">75</span>    <span class="tok-k">if</span> err == <span class="tok-k">nil</span> { <span class="tok-k">break</span> }</span><span class="line"><span class="ln">76</span>    time.Sleep(<span class="tok-num">3</span> * time.Second)</span><span class="line"><span class="ln">77</span>  }</span><span class="line"><span class="ln">78</span></span><span class="line"><span class="ln">79</span>  verifier = provider.Verifier(&oidc.Config{</span><span class="line"><span class="ln">80</span>    ClientID: audience,</span><span class="line"><span class="ln">81</span>  })</span><span class="line"><span class="ln">82</span></span><span class="line"><span class="ln">83</span>  mux := http.NewServeMux()</span><span class="line"><span class="ln">84</span>  mux.HandleFunc(<span class="tok-s">"/api/resource"</span>, authMiddleware(protectedHandler))</span><span class="line"><span class="ln">85</span></span><span class="line"><span class="ln">86</span>  log.Fatal(http.ListenAndServeTLS(<span class="tok-s">":8444"</span>,</span><span class="line"><span class="ln">87</span>    os.Getenv(<span class="tok-s">"TLS_CERT"</span>), os.Getenv(<span class="tok-s">"TLS_KEY"</span>), mux))</span><span class="line"><span class="ln">88</span>}</span></code></pre>
+
+      <div class="space-y-2 mt-4">
+        <div class="annot-line"><span class="linenum">L61–63</span>Read our local CA's public cert, parse it into an <code>x509.CertPool</code>. This pool is what Go will consult when deciding whether to trust a TLS server.</div>
+        <div class="annot-line"><span class="linenum">L65–69</span>Build a custom HTTP client whose TLS config <em>only</em> trusts our CA. The standard system trust store is bypassed. This client will be used for the JWKS fetch.</div>
+        <div class="annot-line"><span class="linenum">L70</span><code>oidc.ClientContext</code> &mdash; quirky API, but important. It stores our custom HTTP client in the context so <code>go-oidc</code>'s internal fetches use it instead of <code>http.DefaultClient</code>.</div>
+        <div class="annot-line"><span class="linenum">L72–77</span>The <strong>retry loop</strong>. Keycloak takes 30–60s to boot. We try every 3 seconds for 3 minutes. <code>NewProvider</code> hits <code>{issuer}/.well-known/openid-configuration</code> — the OIDC <span class="term" data-term="discovery">discovery endpoint</span>.</div>
+        <div class="annot-line"><span class="linenum">L79–81</span>Create the <code>Verifier</code>. Passing <code>ClientID: audience</code> tells it to enforce the <code>aud</code> claim check.</div>
+        <div class="annot-line"><span class="linenum">L86–87</span><code>ListenAndServeTLS</code> (not <code>ListenAndServe</code>). Plain HTTP is never even bound. There's no port 8080 to "accidentally" use.</div>
+      </div>
+    </section>
+
+    <!-- ========== 08 API DOCKERFILE ========== -->
+    <section id="dockerfile-api" class="reveal">
+      <div class="flex items-baseline gap-6 mb-8">
+        <div class="section-num">08</div>
+        <div>
+          <div class="text-[10px] tracking-[0.3em] text-rust font-bold">FILE · api/Dockerfile</div>
+          <h2 class="display text-4xl md:text-5xl font-black leading-none">Multi-Stage Build</h2>
+        </div>
+      </div>
+
+      <p class="mb-6 text-base leading-relaxed">A textbook Go container: compile in one stage, copy the binary to a tiny runtime image. The final image is ~10MB.</p>
+
+      <pre class="code-block"><code><span class="line"><span class="ln">1</span><span class="tok-k">FROM</span> <span class="tok-s">golang:1.22-alpine</span> <span class="tok-k">AS</span> build</span><span class="line"><span class="ln">2</span><span class="tok-k">WORKDIR</span> /src</span><span class="line"><span class="ln">3</span><span class="tok-k">COPY</span> go.mod ./</span><span class="line"><span class="ln">4</span><span class="tok-k">RUN</span> go mod download || <span class="tok-k">true</span></span><span class="line"><span class="ln">5</span><span class="tok-k">COPY</span> . .</span><span class="line"><span class="ln">6</span><span class="tok-k">RUN</span> go mod tidy && CGO_ENABLED=0 go build -o /api .</span><span class="line"><span class="ln">7</span></span><span class="line"><span class="ln">8</span><span class="tok-k">FROM</span> <span class="tok-s">alpine:3.19</span></span><span class="line"><span class="ln">9</span><span class="tok-k">RUN</span> apk add --no-cache ca-certificates</span><span class="line"><span class="ln">10</span><span class="tok-k">COPY</span> --from=build /api /api</span><span class="line"><span class="ln">11</span><span class="tok-k">ENTRYPOINT</span> [<span class="tok-s">"/api"</span>]</span></code></pre>
+
+      <div class="space-y-2 mt-4">
+        <div class="annot-line"><span class="linenum">L1</span><code>AS build</code> names this stage so we can reference it later. <strong>Multi-stage build</strong> pattern: the final image never sees the Go toolchain.</div>
+        <div class="annot-line"><span class="linenum">L3–4</span>Copy <em>only</em> <code>go.mod</code> first, then download deps. Docker caches layer-by-layer, so if we edit <code>main.go</code> but not <code>go.mod</code>, this layer is reused &mdash; rebuilds are fast.</div>
+        <div class="annot-line"><span class="linenum">L6</span><code>CGO_ENABLED=0</code> produces a static binary that runs on Alpine (which uses musl libc, not glibc). Without this flag, you get cryptic "not found" errors on start.</div>
+        <div class="annot-line"><span class="linenum">L8–10</span>Start fresh from Alpine. Copy only the binary. <code>ca-certificates</code> is here so <em>if</em> the API ever needed to reach a public TLS endpoint, it could. For our JWKS fetch we use our custom CA pool, so this is belt-and-suspenders.</div>
+      </div>
+    </section>
+
+    <!-- ========== 09 PYTHON CLIENT ========== -->
+    <section id="client" class="reveal">
+      <div class="flex items-baseline gap-6 mb-8">
+        <div class="section-num">09</div>
+        <div>
+          <div class="text-[10px] tracking-[0.3em] text-rust font-bold">FILE · client/client.py</div>
+          <h2 class="display text-4xl md:text-5xl font-black leading-none">The Caller</h2>
+        </div>
+      </div>
+
+      <p class="mb-6 text-base leading-relaxed">A service account impersonator. Gets a token, calls the API, proves that unauthenticated requests fail.</p>
+
+      <pre class="code-block"><code><span class="line"><span class="ln">1</span><span class="tok-k">import</span> os, sys, time</span><span class="line"><span class="ln">2</span><span class="tok-k">import</span> requests</span><span class="line"><span class="ln">3</span></span><span class="line"><span class="ln">4</span>KEYCLOAK_URL = os.environ[<span class="tok-s">"KEYCLOAK_URL"</span>]</span><span class="line"><span class="ln">5</span>API_URL      = os.environ[<span class="tok-s">"API_URL"</span>]</span><span class="line"><span class="ln">6</span>CLIENT_ID    = os.environ[<span class="tok-s">"CLIENT_ID"</span>]</span><span class="line"><span class="ln">7</span>CLIENT_SECRET = os.environ[<span class="tok-s">"CLIENT_SECRET"</span>]</span><span class="line"><span class="ln">8</span>CA_CERT      = os.environ[<span class="tok-s">"CA_CERT"</span>]</span><span class="line"><span class="ln">9</span></span><span class="line"><span class="ln">10</span>TOKEN_ENDPOINT = <span class="tok-s">f"{KEYCLOAK_URL}/realms/zerotrust/protocol/openid-connect/token"</span></span><span class="line"><span class="ln">11</span></span><span class="line"><span class="ln">12</span><span class="tok-k">def</span> <span class="tok-f">get_token</span>() -&gt; str:</span><span class="line"><span class="ln">13</span>    resp = requests.post(</span><span class="line"><span class="ln">14</span>        TOKEN_ENDPOINT,</span><span class="line"><span class="ln">15</span>        data={</span><span class="line"><span class="ln">16</span>            <span class="tok-s">"grant_type"</span>: <span class="tok-s">"client_credentials"</span>,</span><span class="line"><span class="ln">17</span>            <span class="tok-s">"client_id"</span>: CLIENT_ID,</span><span class="line"><span class="ln">18</span>            <span class="tok-s">"client_secret"</span>: CLIENT_SECRET,</span><span class="line"><span class="ln">19</span>        },</span><span class="line"><span class="ln">20</span>        verify=CA_CERT,</span><span class="line"><span class="ln">21</span>        timeout=<span class="tok-num">10</span>,</span><span class="line"><span class="ln">22</span>    )</span><span class="line"><span class="ln">23</span>    resp.raise_for_status()</span><span class="line"><span class="ln">24</span>    <span class="tok-k">return</span> resp.json()[<span class="tok-s">"access_token"</span>]</span><span class="line"><span class="ln">25</span></span><span class="line"><span class="ln">26</span><span class="tok-k">def</span> <span class="tok-f">call_api</span>(token: str) -&gt; dict:</span><span class="line"><span class="ln">27</span>    resp = requests.get(</span><span class="line"><span class="ln">28</span>        <span class="tok-s">f"{API_URL}/api/resource"</span>,</span><span class="line"><span class="ln">29</span>        headers={<span class="tok-s">"Authorization"</span>: <span class="tok-s">f"Bearer {token}"</span>},</span><span class="line"><span class="ln">30</span>        verify=CA_CERT,</span><span class="line"><span class="ln">31</span>        timeout=<span class="tok-num">10</span>,</span><span class="line"><span class="ln">32</span>    )</span><span class="line"><span class="ln">33</span>    resp.raise_for_status()</span><span class="line"><span class="ln">34</span>    <span class="tok-k">return</span> resp.json()</span><span class="line"><span class="ln">35</span></span><span class="line"><span class="ln">36</span><span class="tok-k">if</span> __name__ == <span class="tok-s">"__main__"</span>:</span><span class="line"><span class="ln">37</span>    token = get_token()</span><span class="line"><span class="ln">38</span>    print(call_api(token))</span><span class="line"><span class="ln">39</span>    <span class="tok-c"># negative tests: no token, bad token</span></span><span class="line"><span class="ln">40</span>    bad = requests.get(<span class="tok-s">f"{API_URL}/api/resource"</span>, verify=CA_CERT)</span><span class="line"><span class="ln">41</span>    print(<span class="tok-s">"unauth →"</span>, bad.status_code)</span></code></pre>
+
+      <div class="space-y-2 mt-4">
+        <div class="annot-line"><span class="linenum">L10</span><strong>The token endpoint URL</strong>. Every OIDC provider exposes this at a discoverable path; Keycloak's is <code>/realms/{realm}/protocol/openid-connect/token</code>.</div>
+        <div class="annot-line"><span class="linenum">L16</span><code>grant_type=client_credentials</code> &mdash; the machine-to-machine flow. No user, no browser redirect, no PKCE. Just "here are my creds, give me a token."</div>
+        <div class="annot-line"><span class="linenum">L20</span><code>verify=CA_CERT</code> &mdash; <strong>this is the critical bit</strong>. Without it, <code>requests</code> would use the system CA store (which doesn't know our local CA) and the connection would fail. With it, Keycloak's cert is validated against our CA.</div>
+        <div class="annot-line"><span class="linenum">L23</span><code>raise_for_status()</code> &mdash; turns non-2xx responses into Python exceptions. Critical for fail-fast behavior.</div>
+        <div class="annot-line"><span class="linenum">L29</span>The <code>Authorization: Bearer &lt;token&gt;</code> header is the OAuth2 standard for presenting a token.</div>
+        <div class="annot-line"><span class="linenum">L40</span><strong>The negative test.</strong> A request with no Auth header. We expect this to return 401. If it doesn't, our Zero Trust is broken.</div>
+      </div>
+
+      <div class="mt-6 callout info">
+        <span class="callout-label">WHY <code>requests</code>?</span>
+        <p class="mt-2 text-sm leading-relaxed">It's the de facto HTTP client for Python. Under the hood it wraps <code>urllib3</code>, which wraps Python's <code>ssl</code> module. The <code>verify=</code> parameter plumbs straight through to OpenSSL's certificate chain validation. There's no magic — just well-layered libraries.</p>
+      </div>
+    </section>
+
+    <!-- ========== 10 RUN & OBSERVE ========== -->
+    <section id="run" class="reveal">
+      <div class="flex items-baseline gap-6 mb-8">
+        <div class="section-num">10</div>
+        <div>
+          <div class="text-[10px] tracking-[0.3em] text-rust font-bold">EXECUTION</div>
+          <h2 class="display text-4xl md:text-5xl font-black leading-none">Run &amp; Observe</h2>
+        </div>
+      </div>
+
+      <div class="space-y-5">
+        <div>
+          <div class="step-pill mb-2">STEP 01</div>
+          <p class="text-sm mb-2">Generate local certificates (<strong>one time</strong>):</p>
+          <pre class="code-block"><code><span class="tok-k">cd</span> certs && <span class="tok-k">chmod</span> +x generate-certs.sh && ./generate-certs.sh && <span class="tok-k">cd</span> ..</code></pre>
+        </div>
+
+        <div>
+          <div class="step-pill mb-2">STEP 02</div>
+          <p class="text-sm mb-2">Build images and start the stack:</p>
+          <pre class="code-block"><code>docker compose up --build</code></pre>
+          <p class="text-xs mt-2 opacity-70">First run takes 60–90s while Keycloak imports the realm. The API will log <code>waiting for keycloak OIDC discovery</code> until Keycloak is ready.</p>
+        </div>
+
+        <div>
+          <div class="step-pill mb-2">STEP 03</div>
+          <p class="text-sm mb-2">You should see the client succeed, then print two 401s:</p>
+          <pre class="code-block"><code><span class="tok-c"># expected output:</span>
+Got token: eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIi...
+API said: {<span class="tok-s">'message'</span>: <span class="tok-s">'Zero Trust says hello'</span>, ...}
+Unauthenticated call status: <span class="tok-p">401</span>
+Forged-token call status: <span class="tok-p">401</span></code></pre>
+        </div>
+      </div>
+
+      <div class="mt-8 callout">
+        <span class="callout-label">WHAT JUST HAPPENED</span>
+        <p class="mt-2 text-sm leading-relaxed">The Python client opened a TLS connection to Keycloak (validating Keycloak's cert against our CA), presented its client_id/secret, received a signed JWT, opened another TLS connection to the Go API (validating <em>its</em> cert too), presented the JWT, and got data back. Then it did two control calls with missing / forged tokens and got rejected. <strong>That's the entire Zero Trust model in one script.</strong></p>
+      </div>
+    </section>
+
+    <!-- ========== 11 TESTING ========== -->
+    <section id="test" class="reveal">
+      <div class="flex items-baseline gap-6 mb-8">
+        <div class="section-num">11</div>
+        <div>
+          <div class="text-[10px] tracking-[0.3em] text-rust font-bold">VALIDATION</div>
+          <h2 class="display text-4xl md:text-5xl font-black leading-none">Testing the System</h2>
+        </div>
+      </div>
+
+      <p class="mb-6 text-base leading-relaxed">The interesting tests aren't the happy path — they're the failure modes. Each one proves a specific attacker question is answered correctly.</p>
+
+      <div class="space-y-3">
+        <details class="border-2 border-ink bg-paper p-4">
+          <summary class="font-bold text-sm">Manual curl test</summary>
+          <pre class="code-block mt-3"><code>TOKEN=$(curl -s --cacert certs/ca.crt <span class="tok-p">\</span>
+  -X POST https://localhost:8443/realms/zerotrust/protocol/openid-connect/token <span class="tok-p">\</span>
+  -d <span class="tok-s">"grant_type=client_credentials"</span> <span class="tok-p">\</span>
+  -d <span class="tok-s">"client_id=python-client"</span> <span class="tok-p">\</span>
+  -d <span class="tok-s">"client_secret=change-me-in-realm-export"</span> <span class="tok-p">\</span>
+  | python3 -c <span class="tok-s">"import sys,json;print(json.load(sys.stdin)['access_token'])"</span>)
+
+curl --cacert certs/ca.crt -H <span class="tok-s">"Authorization: Bearer $TOKEN"</span> <span class="tok-p">\</span>
+  https://localhost:8444/api/resource</code></pre>
+        </details>
+        <details class="border-2 border-ink bg-paper p-4">
+          <summary class="font-bold text-sm">Decode the JWT</summary>
+          <p class="text-xs mt-2 mb-2">Paste the token into jwt.io, or locally:</p>
+          <pre class="code-block"><code><span class="tok-k">echo</span> <span class="tok-s">"$TOKEN"</span> | <span class="tok-k">cut</span> -d. -f2 | base64 -d 2&gt;/dev/null | python3 -m json.tool</code></pre>
+          <p class="text-xs mt-2">You'll see claims like <code>iss</code>, <code>aud</code>, <code>exp</code>, <code>azp</code>, <code>sub</code>. The API middleware is checking <code>iss</code>, <code>aud</code>, <code>exp</code> on every request.</p>
+        </details>
+        <details class="border-2 border-ink bg-paper p-4">
+          <summary class="font-bold text-sm">Attacker scenarios</summary>
+          <ul class="text-sm mt-3 space-y-2 list-disc pl-5">
+            <li><strong>No auth header</strong> &rarr; 401 (rejected before any crypto).</li>
+            <li><strong>Forged/malformed token</strong> &rarr; 401 (signature check fails).</li>
+            <li><strong>Tampered payload</strong> (flip a byte, re-base64) &rarr; 401 (signature no longer matches).</li>
+            <li><strong>Expired token</strong> (wait past <code>exp</code>) &rarr; 401 (claim validation).</li>
+            <li><strong>Token for wrong audience</strong> &rarr; 401 (<code>aud</code> check).</li>
+            <li><strong>Plain HTTP</strong> &rarr; connection refused (API only binds TLS).</li>
+            <li><strong>Skip <code>--cacert</code></strong> &rarr; client-side TLS failure.</li>
+          </ul>
+        </details>
+      </div>
+    </section>
+
+    <!-- ========== 12 GLOSSARY ========== -->
+    <section id="glossary" class="reveal">
+      <div class="flex items-baseline gap-6 mb-8">
+        <div class="section-num">12</div>
+        <div>
+          <div class="text-[10px] tracking-[0.3em] text-rust font-bold">REFERENCE</div>
+          <h2 class="display text-4xl md:text-5xl font-black leading-none">Glossary</h2>
+        </div>
+      </div>
+      <div class="grid md:grid-cols-2 gap-3 text-sm">
+        <div class="border-l-4 border-ink pl-4"><strong>JWT</strong> &mdash; JSON Web Token. Three base64 parts separated by dots: header, payload, signature.</div>
+        <div class="border-l-4 border-ink pl-4"><strong>OIDC</strong> &mdash; OpenID Connect. Identity layer on top of OAuth 2.0.</div>
+        <div class="border-l-4 border-ink pl-4"><strong>JWKS</strong> &mdash; JSON Web Key Set. The public keys an OIDC provider uses to sign tokens.</div>
+        <div class="border-l-4 border-ink pl-4"><strong>IdP</strong> &mdash; Identity Provider. Keycloak, in our case.</div>
+        <div class="border-l-4 border-ink pl-4"><strong>Resource Server</strong> &mdash; the API that enforces token validation.</div>
+        <div class="border-l-4 border-ink pl-4"><strong>Bearer Token</strong> &mdash; any holder of the token is assumed authorized. Must be kept secret.</div>
+        <div class="border-l-4 border-ink pl-4"><strong>Realm</strong> &mdash; Keycloak's isolation unit. Users, clients, roles.</div>
+        <div class="border-l-4 border-ink pl-4"><strong>Audience (aud)</strong> &mdash; the intended recipient of a token. Rejecting mismatches prevents token reuse.</div>
+        <div class="border-l-4 border-ink pl-4"><strong>Issuer (iss)</strong> &mdash; who minted the token. Must match the IdP's exact URL.</div>
+        <div class="border-l-4 border-ink pl-4"><strong>Client Credentials Grant</strong> &mdash; OAuth2 flow for machine-to-machine auth.</div>
+      </div>
+    </section>
+
+    <footer class="mt-24 pt-8 border-t-2 border-ink text-xs tracking-widest flex justify-between">
+      <span>END OF SESSION</span>
+      <span>ZT//TUTORIAL.v1</span>
+    </footer>
+  </main>
+</div>
+
+<!-- MODAL -->
+<div id="modal" class="modal-backdrop fixed inset-0 z-50 bg-ink/70 flex items-center justify-center p-4">
+  <div class="modal-content bg-paper border-2 border-ink max-w-2xl w-full max-h-[85vh] overflow-y-auto shadow-hard">
+    <div class="sticky top-0 bg-ink text-paper px-5 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-2 h-2 bg-amber"></div>
+        <span class="text-[10px] tracking-[0.2em] font-bold" id="modal-kind">DEEP DIVE</span>
+      </div>
+      <button id="modal-close" class="text-paper hover:text-amber text-xl leading-none">✕</button>
+    </div>
+    <div class="p-6 md:p-8">
+      <h3 class="display font-black text-3xl mb-4" id="modal-title">Title</h3>
+      <div id="modal-body" class="text-sm leading-relaxed space-y-3"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// Deep-dive content for every clickable term / concept card
+// ═══════════════════════════════════════════════════════
+const GLOSSARY = {
+  oidc: {
+    kind: 'PROTOCOL',
+    title: 'OpenID Connect (OIDC)',
+    body: `
+      <p>OIDC is a thin identity layer on top of OAuth 2.0. OAuth 2.0 alone answers the question "can this caller do X?" — it was designed for delegated authorization (Google letting Spotify read your contacts). OIDC adds the question "who is this caller?" by standardizing an <code>id_token</code> (a JWT with identity claims).</p>
+      <p>In our stack, Keycloak is the OIDC provider. It exposes a <em>discovery document</em> at <code>/.well-known/openid-configuration</code> that tells any client where to find the token endpoint, the JWKS endpoint, the supported algorithms, and so on. The Go API reads this discovery doc at startup — it doesn't hardcode URLs.</p>
+      <p class="font-bold text-rust">Key insight:</p>
+      <p>OIDC's power is <em>standardization</em>. Any OIDC-compliant library can talk to any OIDC-compliant provider. Swap Keycloak for Auth0 or Okta tomorrow and the Go code barely changes.</p>
+    `
+  },
+  jwt: {
+    kind: 'DATA FORMAT',
+    title: 'JSON Web Token (JWT)',
+    body: `
+      <p>A JWT is three base64url-encoded JSON objects glued together with dots:</p>
+      <pre class="code-block my-3"><code>eyJhbGciOi...  .  eyJzdWIiOi...  .  SflKxwRJ...
+   HEADER           PAYLOAD          SIGNATURE</code></pre>
+      <p><strong>Header</strong> declares the signing algorithm (e.g. <code>RS256</code>) and the key ID.</p>
+      <p><strong>Payload</strong> contains <em>claims</em>: <code>iss</code>, <code>sub</code>, <code>aud</code>, <code>exp</code>, plus anything custom.</p>
+      <p><strong>Signature</strong> is the header+payload signed with the issuer's private key. Anyone with the matching public key can verify it wasn't tampered with.</p>
+      <p class="font-bold text-rust">Critical point:</p>
+      <p>The payload is <em>readable</em> by anyone — base64 is encoding, not encryption. Never put secrets in a JWT payload. The signature guarantees integrity, not confidentiality.</p>
+    `
+  },
+  jwks: {
+    kind: 'ENDPOINT',
+    title: 'JSON Web Key Set (JWKS)',
+    body: `
+      <p>A JWKS is a JSON document listing an issuer's <em>public keys</em>, fetched over HTTPS at a URL like <code>/realms/zerotrust/protocol/openid-connect/certs</code>.</p>
+      <p>Here's why it matters: the Go API never has Keycloak's public key hardcoded. At startup (and periodically after), it fetches JWKS. Each JWT's header has a <code>kid</code> (key ID) that tells the API which key in the set to use for verification.</p>
+      <p class="font-bold text-rust">Operational win:</p>
+      <p>Key rotation is invisible. Keycloak generates a new signing key, publishes both old and new in JWKS, issues new tokens signed with the new key. The API fetches the updated JWKS, verifies new tokens with the new key, and old tokens with the old key. Zero downtime, zero config changes.</p>
+    `
+  },
+  ccgrant: {
+    kind: 'AUTH FLOW',
+    title: 'Client Credentials Grant',
+    body: `
+      <p>OAuth 2.0 defines several "grants" — ways to obtain a token. The most familiar is <strong>authorization code</strong> (the flow that happens when you click "Sign in with Google"). That flow requires a browser, a user, and a redirect URL.</p>
+      <p>Client credentials is the opposite: <em>no user involved</em>. The client sends its own <code>client_id</code> and <code>client_secret</code> directly to the token endpoint:</p>
+      <pre class="code-block my-3"><code>POST /token
+grant_type=client_credentials
+client_id=python-client
+client_secret=&lt;redacted&gt;</code></pre>
+      <p>Keycloak responds with a token whose <code>sub</code> is a "service account user" it auto-created for this client. That service account is the identity the API sees.</p>
+      <p class="font-bold text-rust">When to use it:</p>
+      <p>Backend-to-backend calls. Cron jobs. Microservice-to-microservice. Anywhere no human is present to click "allow."</p>
+    `
+  },
+  mtls: {
+    kind: 'TRANSPORT',
+    title: 'TLS (Transport Layer Security)',
+    body: `
+      <p>TLS does two jobs: (1) encrypts data in transit, and (2) proves the server's identity via a certificate signed by a trusted CA.</p>
+      <p>In our stack, every single link is TLS — client→Keycloak, client→API, API→Keycloak. Even though all three sit on the same Docker bridge network, none of them will talk over plain HTTP. This is where "don't trust the network" gets made real.</p>
+      <p class="font-bold text-rust">Mutual TLS (mTLS):</p>
+      <p>A stronger variant where <em>both sides</em> present certs. The server proves who it is; the client also proves what it is. We didn't implement mTLS here — we stopped at server-only TLS + JWT bearer tokens — but mTLS is a common Zero Trust upgrade, especially for service mesh scenarios.</p>
+    `
+  },
+  audience: {
+    kind: 'JWT CLAIM',
+    title: 'Audience (aud)',
+    body: `
+      <p>The <code>aud</code> claim says "this token is intended for service X." When the Go API verifies a token, it checks whether <code>aud</code> contains <code>zerotrust-api</code>. If not, reject.</p>
+      <p class="font-bold text-rust">Why this matters:</p>
+      <p>Imagine the Python client also calls a <em>different</em> service — say, an invoice API. Without audience checks, a token for the invoice API could be replayed against our API. With audience checks, each API only accepts tokens explicitly minted for it.</p>
+      <p>This is the Zero Trust principle of <em>least privilege</em> applied to tokens: a credential should work in exactly one place, not everywhere that trusts the same issuer.</p>
+      <p class="font-bold text-rust">Keycloak gotcha:</p>
+      <p>By default, Keycloak's client-credentials tokens have <code>aud: "account"</code>, which fails the check. You <em>must</em> add an audience protocol mapper (we did) to make the check pass.</p>
+    `
+  },
+  'lets-encrypt': {
+    kind: 'CA',
+    title: "Let's Encrypt",
+    body: `<p>A free, automated public CA. Issues short-lived (90 day) TLS certs for any domain you can prove you own. The standard for public-facing production TLS since ~2016. Can't issue certs for internal hostnames like <code>keycloak</code>, which is why we mint our own CA for local dev.</p>`
+  },
+  ca: {
+    kind: 'CRYPTO',
+    title: 'Certificate Authority (CA)',
+    body: `
+      <p>A CA is an entity that signs certificates, vouching for the identity of the subject. Every TLS connection relies on a <em>chain of trust</em>: the server's cert was signed by an intermediate CA, which was signed by a root CA, which your OS/browser trusts out of the box.</p>
+      <p>In this tutorial we act as our own CA with <code>openssl req -x509 -new</code>. The resulting <code>ca.crt</code> is then distributed to every container so they can verify the certs we issue.</p>
+      <p>In production, your org likely has an internal CA (often via HashiCorp Vault, cert-manager, or smallstep CA) for service-to-service TLS.</p>
+    `
+  },
+  san: {
+    kind: 'CERT FIELD',
+    title: 'Subject Alternative Name (SAN)',
+    body: `
+      <p>Modern TLS clients <strong>ignore</strong> the Common Name (CN) field of a certificate. Hostname validation happens against the <em>subjectAltName</em> extension, which can list multiple DNS names and IPs.</p>
+      <pre class="code-block my-3"><code>subjectAltName = @alt_names
+[alt_names]
+DNS.1 = keycloak
+DNS.2 = localhost
+IP.1  = 127.0.0.1</code></pre>
+      <p>This is why our generated cert works <em>both</em> inside Docker (where containers reach each other as <code>keycloak</code>) and from the host (where you hit <code>localhost</code>).</p>
+      <p>Common error: omit the SAN, connect via hostname, get <code>x509: certificate is not valid for any names, but wanted to match keycloak</code>.</p>
+    `
+  },
+  healthcheck: {
+    kind: 'DOCKER',
+    title: 'Healthchecks &amp; Dependencies',
+    body: `
+      <p>A Docker healthcheck is a command that runs inside a container at regular intervals. Exit 0 = healthy, nonzero = unhealthy. The container's status reflects this.</p>
+      <p>Compose's <code>depends_on: { service: { condition: service_healthy } }</code> waits for a dep to be <em>healthy</em>, not just <em>started</em>. Without this, the API container starts the moment Keycloak's container starts — but Keycloak takes 30-60s to actually bind its TLS listener. The API tries to connect, gets <code>connection refused</code>, crashes.</p>
+      <p>Pair healthchecks with application-level retries (like our OIDC discovery loop) for belt-and-suspenders robustness.</p>
+    `
+  },
+  realm: {
+    kind: 'KEYCLOAK',
+    title: 'Realm',
+    body: `
+      <p>A Keycloak realm is a fully isolated authentication tenant. Separate users, groups, roles, clients, sessions, and signing keys. Realms are often used to separate environments (dev/staging/prod) or customers (multi-tenant SaaS).</p>
+      <p>The default <code>master</code> realm is for administering Keycloak itself. Your application code never authenticates against master — you always create a dedicated realm like our <code>zerotrust</code>.</p>
+    `
+  },
+  'go-oidc': {
+    kind: 'LIBRARY',
+    title: 'coreos/go-oidc',
+    body: `
+      <p>The de facto Go library for OIDC relying-party code. Originally written at CoreOS (now Red Hat), currently maintained as part of the Dex federated identity project.</p>
+      <p>Key things it does for you:</p>
+      <ul class="list-disc pl-5">
+        <li>Fetches and parses the OIDC discovery document</li>
+        <li>Fetches and caches JWKS (with sensible TTL and retry)</li>
+        <li>Handles <code>kid</code>-based key selection</li>
+        <li>Verifies RS256/ES256/etc signatures</li>
+        <li>Checks <code>iss</code>, <code>aud</code>, <code>exp</code>, <code>nbf</code>, <code>iat</code></li>
+      </ul>
+      <p>What it doesn't do: fetch tokens. That's the <em>client's</em> job (our Python script). <code>go-oidc</code> is purely for relying parties verifying tokens they receive.</p>
+    `
+  },
+  claims: {
+    kind: 'JWT',
+    title: 'Claims',
+    body: `
+      <p>Claims are the named fields inside a JWT's payload. OIDC standardizes several:</p>
+      <ul class="list-disc pl-5 text-xs">
+        <li><code>iss</code> (issuer) — who minted this token</li>
+        <li><code>sub</code> (subject) — who the token is about</li>
+        <li><code>aud</code> (audience) — who the token is for</li>
+        <li><code>exp</code> (expiration) — unix timestamp after which it's invalid</li>
+        <li><code>iat</code> (issued at) — unix timestamp of issuance</li>
+        <li><code>azp</code> (authorized party) — the client that requested the token</li>
+      </ul>
+      <p>Keycloak also ships custom claims: <code>realm_access.roles</code>, <code>resource_access.{client}.roles</code>, <code>preferred_username</code>, etc. Your API can use these for authorization decisions (e.g. "only users with role <code>admin</code> can delete").</p>
+    `
+  },
+  discovery: {
+    kind: 'OIDC',
+    title: 'Discovery Endpoint',
+    body: `
+      <p>Every OIDC provider exposes a well-known URL: <code>{issuer}/.well-known/openid-configuration</code>. It returns a JSON document describing the provider's endpoints and capabilities.</p>
+      <pre class="code-block my-3"><code>{
+  "issuer": "https://keycloak:8443/realms/zerotrust",
+  "token_endpoint": ".../protocol/openid-connect/token",
+  "jwks_uri": ".../protocol/openid-connect/certs",
+  "id_token_signing_alg_values_supported": ["RS256"],
+  ...
+}</code></pre>
+      <p>Libraries like <code>go-oidc</code> use this to auto-configure. You give them the issuer URL once; they figure out everything else. It's why changing OIDC providers is mostly a config change, not a rewrite.</p>
+    `
+  }
+};
+
+// ═══════════════════════════════════════════════════════
+// Modal wiring
+// ═══════════════════════════════════════════════════════
+const modal = document.getElementById('modal');
+const modalKind = document.getElementById('modal-kind');
+const modalTitle = document.getElementById('modal-title');
+const modalBody = document.getElementById('modal-body');
+
+function openModal(key) {
+  const entry = GLOSSARY[key];
+  if (!entry) return;
+  modalKind.textContent = entry.kind;
+  modalTitle.textContent = entry.title;
+  modalBody.innerHTML = entry.body;
+  modal.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeModal() {
+  modal.classList.remove('open');
+  document.body.style.overflow = '';
+}
+document.getElementById('modal-close').addEventListener('click', closeModal);
+modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+
+document.querySelectorAll('.term').forEach(el => {
+  el.addEventListener('click', () => openModal(el.dataset.term));
+});
+document.querySelectorAll('.concept-card').forEach(el => {
+  el.addEventListener('click', () => openModal(el.dataset.term));
+});
+
+// ═══════════════════════════════════════════════════════
+// Scroll spy for TOC
+// ═══════════════════════════════════════════════════════
+const sections = document.querySelectorAll('section[id]');
+const tocLinks = document.querySelectorAll('.toc-link');
+const spy = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      tocLinks.forEach(l => l.classList.toggle('active', l.getAttribute('href') === '#' + e.target.id));
+    }
+  });
+}, { rootMargin: '-40% 0px -55% 0px' });
+sections.forEach(s => spy.observe(s));
+
+// ═══════════════════════════════════════════════════════
+// Scroll reveal
+// ═══════════════════════════════════════════════════════
+const revealer = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.08 });
+document.querySelectorAll('.reveal').forEach(el => revealer.observe(el));
+</script>
+</body>
+</html>
