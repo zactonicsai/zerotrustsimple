@@ -1,0 +1,48 @@
+{
+  "realm": "zerotrust",
+  "enabled": true,
+  "accessTokenLifespan": 300,
+  "clients": [
+    {
+      "clientId": "zerotrust-api",
+      "enabled": true,
+      "bearerOnly": true,
+      "publicClient": false,
+      "protocol": "openid-connect"
+    },
+    {
+      "clientId": "python-client",
+      "enabled": true,
+      "secret": "change-me-in-realm-export",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "attributes": {
+        "access.token.signed.response.alg": "RS256"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience-zerotrust-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "zerotrust-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "roles": {
+    "client": {
+      "zerotrust-api": [
+        { "name": "api:read" },
+        { "name": "api:write" }
+      ]
+    }
+  }
+}
